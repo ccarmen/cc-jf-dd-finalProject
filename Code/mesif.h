@@ -11,6 +11,7 @@ Team:
 File: 			mesif.h
 Date:			11/16/2014
 Author:			Deborah Denhart
+Modified:		Deborah Denhart		12/02/14
 Description: 	This file contains:
 				- 
 	
@@ -18,82 +19,138 @@ Description: 	This file contains:
 
 #define MAX_STATE_COMBO 3;
 
-enum Mesif_states { eINVALID  = 0, // Cache line is invalid					eMODIFIED = eINVALID +1, // Only this cache has the line and the memory is stale					eSHARED = eMODIFIED +1, // At least two other caches have the line and memory is up to date					eEXCLUSIVE = eSHARED + 1, // Only this cache has the line and the memory is up to date					eFORWARD = eEXCLUSIVE +1, // Cache line is in the shared state and this is the forwarding processor					eMAX_STATES = eFORWARD +1 };
-// Bus operation typesenum bus_ops { eREAD = 1, // Bus read
-			   eWRITE = eREAD +1, // Bus forward (also write-back???)
-			   eINVALIDATE = eWRITE +1, // Bus invalidate
-			   eRWIM = eINVALIDATE +1, // Bus read with intend to modify
-			   eB_MAX_EVENTS = eRWIM +1 };
+// Bus operation types
+enum proc_res { ePR_READ = 10, // Bus Read
+				ePR_WRITE = ePR_READ + 1, // Bus Write
+
+				ePR_NOHIT = ePR_WRITE + 1,
+				ePR_HIT = ePR_NOHIT + 1,
+
+				ePR_MEMREAD = ePR_HIT + 1,
+				ePR_RFO = ePR_MEMREAD + 1,
+				ePR_INVALIDATE = ePR_RFO +1, // Bus Invalidate
+
+				ePR_DONTCARE = ePR_INVALIDATE + 1,
+				ePR__MAX_EVENTS = ePR_DONTCARE + 1
+};
+
 
 // Snoop result types
-enum snoop_res { eNOHIT = 0, // No hit
-				eHIT = eNOHIT +1, // Hit
-				eHITM = eHIT +1, // Hit to a modified line
-				eS_MAX_EVENTS = eHITM +1 };
+enum snoop_res {eSR_RFO = 20,
+				eSR_READ = eSR_RFO + 1,
+	
+				eSR_HIT = eSR_READ +1, // Hit
+				eSR_HITM = eSR_HIT + 1, // Hit to a modified line
 
-//mesif error codes
+				eSR_WRITEBACK = eSR_HITM + 1,
+				eSR_FORWARD = eSR_WRITEBACK + 1,
+
+				eSR_DONTCARE = eSR_FORWARD + 1,
+				eSR_MAX_EVENTS = eSR_DONTCARE + 1
+};
+
+//MESIF Error codes
 enum mesif_err { eNO_ERROR = 0,
 				 eINVALID_STATE_ERROR = -100,
-				 eBUS_ERROR = -200,
-				 eSNOOP_ERROR = -300 };
+				 eFLAG_ERROR = -110,
+				 eProc_ERROR = -200,
+				 eSNOOP_ERROR = -300,
+				 eSYNTAX_NULL_ERROR = -400 };
 
+enum mesif_type{ eProc = 0,
+				 eSnoop = 1 };
 
 struct sMesif {
 	enum Mesif_states current_state;
-	enum bus_ops bus[MAX_STATE_COMBO];
-	enum snoop_res snoop[MAX_STATE_COMBO];
+	enum proc_res bus[eSR_MAX_EVENTS];
+	enum snoop_res snoop[eSR_MAX_EVENTS];
 	enum mesif_err eERROR;
 };
 
-enum Mesif_states currentMesifState(unsigned long lAddress, unsigned lLine);
-enum bus_ops nextBusEvent(enum Mesif_states current_state);
-enum bus_ops getBusEvent();
+// Used to simulate a bus operation and to capture the 
+// snoop results of last level caches of other processors
+void BusOperation(enum proc_res BusOp, unsigned int Address, enum snoop_res *SnoopResult);
+
+// Used to simulate the reporting of snoop results by other caches
+enum snoop_res GetSnoopResult(unsigned int Address);
+
+// Used to report the result of our snooping bus operations by other caches  
+void PutSnoopResult(unsigned int Address, enum snoop_res SnoopResult); 
+
+//Read the line MESIF state
+unsigned int GetMesifState(unsigned int set, unsigned int line);
+
+// Get the current state of a line
+enum Mesif_states nextCPUState(enum Mesif_states eState);
+
+// Get the current state of a line
+enum Mesif_states nextSnoopState(enum Mesif_states eState);
+
+enum proc_res nextBusEvent(enum Mesif_states current_state);
+
+// Get the latest bus event
+enum proc_res getBusEvent();
+
 enum snoop_res nextSnoopEvent(enum Mesif_states current_state);
-enum snoop_res getSnoopEvent(unsigned int Address);
-void busStateSelect( enum Mesif_states eCurrent, enum bus_ops *eBusNext);
-void snoopStateSelect( enum Mesif_states eCurrent, enum snoop_res *eSnoopNext);
-void BusOperation(enum bus_ops BusOp, unsigned int Address, enum snoop_res *SnoopResult);
+
+// Get the latest snoop event
+enum snoop_res getSnoopEvent();
+
+
+enum proc_res busStateSelect(enum Mesif_states eCurrent, int *iEventCode);
+enum snoop_res snoopStateSelect(enum Mesif_states eCurrent, int *iEventCode);
+
 
 //function prototypes for each action 
-void actionM_Read();
-void actionM_Write();
-void actionM_Invalidate();
-void actionM_RWIM();
-void actionM_NOHIT();
-void actionM_HIT();
-void actionM_HITM();
+enum mesif_err actionM_Read(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionM_Write(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionM_Invalidate(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionM_RWIM(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionM_NOHIT(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionM_HIT(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionM_HITM(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionM_RFO(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionM_MEMREAD(enum mesif_type eFlag, int *iEventCode);
 
-void actionE_Read();
-void actionE_Write();
-void actionE_Invalidate();
-void actionE_RWIM();
-void actionE_NOHIT();
-void actionE_HIT();
-void actionE_HITM();
+enum mesif_err actionE_Read(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionE_Write(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionE_Invalidate(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionE_RWIM(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionE_NOHIT(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionE_HIT(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionE_HITM(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionE_RFO(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionE_MEMREAD(enum mesif_type eFlag, int *iEventCode);
 
-void actionS_Read();
-void actionS_Write();
-void actionS_Invalidate();
-void actionS_RWIM();
-void actionS_NOHIT();
-void actionS_HIT();
-void actionM_HITM();
+enum mesif_err actionS_Read(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionS_Write(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionS_Invalidate(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionS_RWIM(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionS_NOHIT(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionS_HIT(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionM_HITM(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionS_RFO(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionS_MEMREAD(enum mesif_type eFlag, int *iEventCode);
 
-void actionI_Read();
-void actionI_Write();
-void actionI_Invalidate();
-void actionI_RWIM();
-void actionI_NOHIT();
-void actionI_HIT();
-void actionI_HITM();
+enum mesif_err actionI_Read(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionI_Write(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionI_Invalidate(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionI_RWIM(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionI_NOHIT(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionI_HIT(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionI_HITM(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionI_RFO(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionI_MEMREAD(enum mesif_type eFlag, int *iEventCode);
 
-void actionF_Read();
-void actionF_Write();
-void actionF_Invalidate();
-void actionF_RWIM();
-void actionF_NOHIT();
-void actionF_HIT();
-void actionF_HITM();
+enum mesif_err actionF_Read(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionF_Write(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionF_Invalidate(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionF_RWIM(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionF_NOHIT(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionF_HIT(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionF_HITM(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionF_RFO(enum mesif_type eFlag, int *iEventCode);
+enum mesif_err actionF_MEMREAD(enum mesif_type eFlag, int *iEventCode);
 
 void action_doNothing();
 

@@ -5,25 +5,32 @@
 		Deborah Denhart
 		Jeremiah Franke
    ==================================================================================
-   File:              CacheSimulator.c
+   File:			CacheSimulator.c
    Date:            11/16/2014
-   Author:         Carmen Ciobanu
-                        Jeremiah Franke
+   Author:			Carmen Ciobanu
+   Modified:		Jeremiah Franke
    Description: 	This file contains: main function
    ================================================================================== */
 
-
+// # includes  
+#include <stdint.h>				// for special data types like uint8_t, uint16_t 
+#include <stdio.h>				// I/O library
+#include <ctype.h>				// useful for parsing
+#include <errno.h>				// error macros
+#include <math.h>				// basic match library
+#include <stdlib.h>				// general utilities
+#include <string.h>				// string handling
 #include "CacheSimulator.h"
+#include "parse.h"
 
 
 /*   MAIN FUNCTION  */
 
 int main(int argc, char * argv[])
 {
-	char filename[100];
+	char filename[INPUT_BUFFER_SIZE];
 	long int arg1, arg2, arg3;
 	int returnValue;
-
 
 	/* Read command line arguments
 			Argv[0] = executable
@@ -32,6 +39,7 @@ int main(int argc, char * argv[])
 	 		Argv[3] = cache associativity
 	 		Argv[4] = trace file name
 	*/
+	
 	if(argc != 5)
 	{
 		fprintf(stderr, "Usage: %s	#Sets	Line size in bytes		Associativity		Trace file name\n", argv[0]);

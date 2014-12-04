@@ -8,12 +8,20 @@
 	File:				utility.c
 	Date:			11/16/2014
 	Author:			Carmen Ciobanu
-						Jeremiah Franke
+	Modified:		Jeremiah Franke
+					Deborah Denhart		12/02/14
 	Description:	This file contains: UTILITY FUNCTIONS
    ================================================================================== */
 
-
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <ctype.h>
+#include <stdio.h>
+#include <math.h>
 #include "CacheSimulator.h"
+#include "mesif.h"
+#include "output.h"
 
 
 /* ==================================================================================
@@ -43,6 +51,181 @@ void ParseAddress(unsigned int * address, unsigned int * index, unsigned int * t
 	*tag = (*address) >> (numOffsetBits + numIndexBits);
 }
 
+
+/* ==================================================================================
+	Function name:	initCache
+ 	Arguments:			
+	Returns:		int err
+	Description:	initialize the cache
+================================================================================== */
+int initCache()
+{
+	int error = 0;
+	int i = 0;
+	 if((cachePtr = (struct set_t*)calloc(cacheStatistics.numSets, sizeof(struct set_t))) == NULL)
+	{ 
+		fprintf(stderr, "Calloc failed to allocate memory for the cache\n");
+		error =  1;
+	}
+	
+	for (i = 0; i < cacheStatistics.numSets; ++i)
+	{
+		if ((cachePtr[i].setPtr = (struct line_t*)calloc(cacheStatistics.associativity, sizeof(struct line_t))) == NULL)
+		{
+			fprintf(stderr, "Calloc failed to allocate memory for set %d\n", i);
+			error =  1;
+		}
+	}
+	
+	// Populate binary search array with all line numbers in the set
+	// -------------------------------------------------------------
+	for(i = 0; i <  cacheStatistics.associativity; ++i)
+	{
+		binarySearchArray[i] = i;
+	#ifdef DEBUG
+		printf("Binary search array [%d] = %d\n", i, i);
+	#endif
+	}
+	
+	// Create binary search array for pseudo LRU algorithm
+	// ---------------------------------------------------
+	if ((binarySearchArray = (int*) malloc(sizeof(int) * cacheStatistics.associativity)) == NULL)
+	{
+		fprintf(stderr, "In function %s, line %d: malloc failed to allocate the binary search array\n", __FUNCTION__, __LINE__);
+		error =  -1; 
+	}
+
+	return error;
+}
+
+
+/* ==================================================================================
+	Function name:	delCache
+ 	Arguments:			
+	Returns:		void
+	Description:	deallocate all memory
+================================================================================== */
+void delCache()
+{
+	int i;
+
+    for (i = 0; i < cacheStatistics.numSets; ++i)	
+	{
+		if (cachePtr[i].setPtr)
+		{
+			free(cachePtr[i].setPtr);
+		}
+	}
+
+    free(cachePtr);
+    free(binarySearchArray);
+}
+
+
+#ifdef 0
+/* ==================================================================================
+	Function name:	handleInputs
+ 	Arguments:		char* argv
+	Returns:		char*
+	Description:	Read command line arguments and do error check
+================================================================================== */
+char* handleInputs(char **argv, int argc, char* filename)
+{
+	/* 
+	   ----------------------------------------------
+		Argv[0] = executable
+	 	Argv[1] = number of sets (store in cacheStatistics.numSets)
+	 	Argv[2] = line size in bytes (store in cacheStatistics.lineSize)
+	 	Argv[3] = cache associativity (store in cacheStatistics.associativity)
+	 	Argv[4] = trace file name (store in filename)
+	*/
+
+	int badInput = TRUE;
+	char delim = ' ';
+	long int arg[3]; 			// array for storing the trace file name
+	char inputs[INPUT_BUFFER_SIZE];
+	char *reInputs[5];
+
+	if(argc != 5)
+	{
+		argc = 0;
+		//let user keep trying until good input
+		while(badInput)
+			fprintf(stderr, "Usage: %s	#Sets	Line size in bytes	Associativity	Trace file name		Debug flag\n", argv[0]);
+			if( (fgets(inputs, INPUT_BUFFER_SIZE, stdin) != NULL ) ) 
+			{
+				// get the first string
+				reInputs[argc] = strtok(inputs, &delim);
+				argc++;
+				/* walk through other tokens */
+				while( (reInputs[argc] != NULL) && (argc < 4) ) 
+				{
+					reInputs[argc] = strtok(NULL, &delim);
+					argc++;
+				}
+				if( (argc >= 4) && (argc >= 5))
+				{
+					badInput = FALSE;
+					arg[0] = atoll(reInputs[1]); //dd TODO: not sure atoll works in c
+					arg[1] = atoll(reInputs[2]);
+					arg[2] = atoll(reInputs[3]);
+					memset(filename, '\0', sizeof(filename));
+					strcpy(filename, reInputs[4]);
+					setCacheParams(arg);
+				}
+			}
+			
+	}
+	else
+	{
+		// Store command line arguments in proper variables
+		// ------------------------------------------------
+		arg[0] = atoll(argv[1]); //dd TODO: not sure atoll works in c
+		arg[1] = atoll(argv[2]);
+		arg[2] = atoll(argv[3]);
+		memset(filename, '\0', sizeof(filename));
+		strcpy(filename, argv[4]);
+		setCacheParams(arg);
+	}
+}
+
+
+/* ==================================================================================
+	Function name:	setCacheParams
+ 	Arguments:		long int *arg
+	Returns:		void
+	Description:	set new parameters
+================================================================================== */
+void setCacheParams(long int *arg)
+{
+    cacheStatistics.numSets = arg[1];
+    cacheStatistics.lineSize = arg[2];
+    cacheStatistics.associativity = arg[3];
+    
+    // Compute and initialize all other cache attributes
+    cacheStatistics.numLines = cacheStatistics.numSets * cacheStatistics.associativity;	
+	cacheStatistics.cacheSize = cacheStatistics.numLines * cacheStatistics.lineSize ;	
+}
+#endif
+
+
+
+/* ==================================================================================
+Function name:	MessageToL2Cache
+Arguments:		unsigned int
+Returns:		void
+Description:
+================================================================================== */
+void MessageToL2Cache(unsigned int BusOp, unsigned int Address)
+{
+#ifndef SILENT 
+	printf(“L2: %d %h\n”, BusOp, Address);
+#endif
+}
+	
+/*==================================================================================
+							 MATH FUNCTIONS
+==================================================================================*/
 
 /* ==================================================================================
 	Function name:	ConvertToBase
@@ -164,15 +347,17 @@ void SetLineTag(unsigned int set, unsigned int line, unsigned int * tag)
 
 
 /* ==================================================================================
-	Function name:	GetMesifState
- 	Arguments:		unsigned int set = number of the set containing the desired line
- 	 	 	 	 	unsigned int line = number of the line we want to get the MESIF bits for
+	Function name:	UpdateMesif
+ 	Arguments:		unsigned int address - the address input from the trace file
+					unsigned int cmd - the command from the trace file
+					unsigned int set - number of the set containing the desired line
+ 	 	 	 	 	unsigned int line - number of the line we want to get the MESIF bits for
 	Returns:		void
-	Description:	Read the line MESIF state
+	Description:	Update the MESIF bits
    ================================================================================== */
-int GetMesifState(unsigned int set, unsigned int line)
+void UpdateMesif(unsigned int address, unsigned int cmd, unsigned int set, unsigned int line)
 {
-		return cachePtr[set].setPtr[line].mesifBits;
+		
 }
 
 
@@ -303,26 +488,6 @@ int ValidateInputs()
 }
 
 
-// ==================================================================
-// MESIF functions - do we still need these, are we moving these to mesif.c ??? !!!!!!!!
-// ==================================================================
-/*
-void BusOperation(char BusOp, unsigned int Address, char * SnoopResult)
-{
-
-}
-
-char GetSnoopResult(unsigned int Address)
-{
-	return 0;
-
-}
-
-void PutSnoopResult(unsigned int Address, char SnoopResult)
-{
-
-}
-
  // ==========================================
 // Move to memory read/write and buffer file (???!!!!!!!!)
 // ===========================================
@@ -331,9 +496,27 @@ void ReadMemory(unsigned int address)
 
 }
 
+
 void WriteMemory(unsigned int address)
 {
 
 }
-*/
 
+
+/* ===============================================================================
+takeLogBase2: Returns log base 2 of the input
+
+@input: unsigned int vars
+
+@output: unsigned int
+
+================================================================================== */
+unsigned int takeLogBase2 (unsigned int vars)
+{
+	double base = 2.;
+	double dvars = (double)vars;
+	double quot = log(dvars);
+	double div = log(base);
+	double result = (quot/div);
+	return (int)result;
+}
